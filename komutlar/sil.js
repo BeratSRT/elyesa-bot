@@ -1,15 +1,21 @@
-module.exports = {
-  name:"sil",
-  code:`
-  \`\`$message\`\` Kadar Mesaj Artık Güneşte 🌞
-  $deletecommand
-  $deleteIn[4s]
-  $clear[$message[1]]
-  $suppressErrors[Hata !]
-  $onlyIf[$hasPerms[$authorID;managemessages]!=false;Üzgünüm Bu Komut İçin \`\`Mesajları Yönet\`\` Yetkin Bulunmalıdır]
-  $onlyIf[$message!=;Mesaj Miktarı Girermisin !]
-  $onlyIf[$isNumber[$message[1]]!=false;Girdiğin Miktar Rakam Değil !]
-  $onlyIf[$message[1]>0;Girdiğin Rakam 1'in Altında Olamaz !]
-  $onlyIf[$message[1]<101;Girdiğin Rakam 100'ün Üstünde Olamaz !]  
-`
+const Discord = require('discord.js');
+const data = require('quick.db');
+
+
+exports.run = async (client, message, args) => {
+if(!message.member.permissions.has('MANAGE_MESSAGES')) return message.channel.send(new Discord.MessageEmbed().setDescription('Bu komutu kullanabilmek için `Mesajları Yönet` iznine sahip olmalısın.'));
+if(!args[0]) return message.channel.send(new Discord.MessageEmbed().setDescription('Silinecek mesaj miktarını girmelisin.'));
+if(args[0] > 100) return message.channel.send(new Discord.MessageEmbed().setDescription('`100` üzeri mesaj miktarını aynı anda silemem.'));
+message.channel.bulkDelete(args[0]);
+return message.channel.send(new Discord.MessageEmbed().setDescription(''+`${args[0]}`+' adet mesaj başarıyla silindi.')).then(m => m.delete({timeout: 5000}));
+};
+exports.conf = {
+  enabled: true,
+  guildOnly: true,
+  aliases: ["temizle"],
+  permLevel: 0
 }
+
+exports.help = {
+  name: 'sil'
+};

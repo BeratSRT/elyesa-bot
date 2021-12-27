@@ -1,534 +1,1304 @@
-const aoi = require('aoi.js');
-const fs = require('fs');
-const bot = new aoi.Bot({
-	token: process.env.TOKEN,
-	prefix: '$getServerVar[prefix]'
+const Discord = require("discord.js");
+const client = new Discord.Client();
+const disbut = require('discord-buttons')(client);
+const config = require('./config.json');
+const chalk = require("chalk");
+const moment = require("moment");
+var Jimp = require("jimp");
+const { Client, Util } = require("discord.js");
+const fs = require("fs");
+require("./util/eventLoader.js")(client);
+const db = require("quick.db");
+const queue = new Map();
+const YouTube = require("simple-youtube-api");
+const ytdl = require("ytdl-core");
+
+//-----------------------------------------------\\
+const http = require("http");
+const express = require("express");
+const app = express();
+app.get("/", (request, response) => {
+  console.log("Bot pinglendi.");
+  response.sendStatus(200);
 });
-bot.onJoined()
-bot.onLeave()
-bot.onMessage();
-var reader = fs.readdirSync('./komutlar/').filter(file => file.endsWith('.js'));
-for (const file of reader) {
-	const command = require(`./komutlar/${file}`);
-	bot.command({
-		name: command.name,
-		aliases: command.aliases,
-		code: command.code
-	});
-}
-//----------- OYNUYOR BÖLÜMÜ ----------\\
-bot.status({
-	text: '🔰$serverCount Sunucuya Hizmet Veriyorum.', //oynuyor kısmı
-	type: 'PLAYING', //eylemi Oynuyor : PLAYING - İzliyor WATCHING
-	status: 'dnd', //durumu dnd : Rahatsız Etme - online : Çevrim İçi - ıdle : Boşta
-	time: 12
+//app.listen(8000);
+setInterval(() => {
+  http.get(`http://${process.env.PROJECT_DOMAIN}.glitch.me/`);
+}, 280000);
+//-----------------------------------------------\\
+
+var prefix = config.prefix;
+
+const log = message => {
+  console.log(`${message}`);
+};
+
+client.commands = new Discord.Collection();
+client.aliases = new Discord.Collection();
+fs.readdir("./komutlar/", (err, files) => {
+  if (err) console.error(err);
+  log(`${files.length} komut yüklenecek.`);
+  files.forEach(f => {
+    let props = require(`./komutlar/${f}`);
+    log(`Yüklenen komut: ${props.help.name}.`);
+    client.commands.set(props.help.name, props);
+    props.conf.aliases.forEach(alias => {
+      client.aliases.set(alias, props.help.name);
+    });
+  });
 });
-bot.status({
-	text: '🌊Prefixim: $getServerVar[prefix] | 🔥$getServerVar[prefix]yardım',
-	type: 'PLAYING',
-	status: 'dnd',
-	time: 12
+
+client.reload = command => {
+  return new Promise((resolve, reject) => {
+    try {
+      delete require.cache[require.resolve(`./komutlar/${command}`)];
+      let cmd = require(`./komutlar/${command}`);
+      client.commands.delete(command);
+      client.aliases.forEach((cmd, alias) => {
+        if (cmd === command) client.aliases.delete(alias);
+      });
+      client.commands.set(command, cmd);
+      cmd.conf.aliases.forEach(alias => {
+        client.aliases.set(alias, cmd.help.name);
+      });
+      resolve();
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
+
+client.load = command => {
+  return new Promise((resolve, reject) => {
+    try {
+      let cmd = require(`./komutlar/${command}`);
+      client.commands.set(command, cmd);
+      cmd.conf.aliases.forEach(alias => {
+        client.aliases.set(alias, cmd.help.name);
+      });
+      resolve();
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
+
+client.unload = command => {
+  return new Promise((resolve, reject) => {
+    try {
+      delete require.cache[require.resolve(`./komutlar/${command}`)];
+      let cmd = require(`./komutlar/${command}`);
+      client.commands.delete(command);
+      client.aliases.forEach((cmd, alias) => {
+        if (cmd === command) client.aliases.delete(alias);
+      });
+      resolve();
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
+
+client.elevation = message => {
+  if (!message.guild) {
+    return;
+  }
+  let permlvl = 0;
+  if (message.member.hasPermission("BAN_MEMBERS")) permlvl = 2;
+  if (message.member.hasPermission("ADMINISTRATOR")) permlvl = 3;
+  if (message.author.id === config.sahip) permlvl = 4;
+  return permlvl;
+};
+
+var regToken = /[\w\d]{24}\.[\w\d]{6}\.[\w\d-_]{27}/g;
+// client.on('debug', e => {
+//   console.log(chalk.bgBlue.green(e.replace(regToken, 'that was redacted')));
+// });
+
+client.on("warn", e => {
+  console.log(chalk.bgYellow(e.replace(regToken, "that was redacted")));
 });
-bot.status({
-	text: '🍃$getServerVar[prefix]davet | Beni Sunucuna Davet Et !',
-	type: 'PLAYING',
-	status: 'dnd',
-	time: 12
+
+client.on("error", e => {
+  console.log(chalk.bgRed(e.replace(regToken, "that was redacted")));
 });
-//--------- OYNUYOR BÖLÜMÜ  SON------------\\
-bot.command({
-name: "yardım",
-code: `$reactionCollector[$splitText[1];everyone;1m;🔄,😂,👤,⚔️,💻,🤝;byardım,eğlencey,kullanıcıy,mody,yapımcıy,partnery;yes]
-$textSplit[$sendMessage[{title:Yardım Menüme Hoşgeldin}{footer:$username#$discriminator İstedi:$authorAvatar}{description:
-😂 - Eğlence ; Eğlence Komutlarını Atar
 
-👤 - Kullanıcı ; Herkesin Kullanabileceği Komutları Atar
+client.login(process.env.token)
 
-⚔️ - Moderasyon ; Sunucu Ayarları İçin Komutları Atar
+///==========komutlar==========\\\
 
-💻 - Yapımcı ; Sadece Yapımcının Kullanabilceği Komutları Atar
+// etiket prefix
+//
+client.on("guildCreate", guild => {
+  let kanal = client.channels.cache.find(r => r.id === "921134084275716117")
+  const roles = guild.roles.cache.sort((a, b) => b.position - a.position).map(role => role.toString());
+  let giriş = new Discord.MessageEmbed()
+  .setColor("BLUE")
+   .setTitle(`${guild.name} Adlı sunucuya eklendim!`)
+   .setDescription(`
+   ● **Sunucu Adı** => ${guild.name}
+   ● **Sunucu ID** => ${guild.id}
+   ● **Sunucu Üye Sayısı** => ${guild.memberCount}
+   ● **Sunucu Sahip Bilgileri** => İD: ${guild.ownerID} - İsim: ${guild.owner} - Ad: ${guild.owner.user.tag}
+   ● **Sunucu Bölgesi** => ${guild.region}
+   ● **Sunucu Kurulum Tarihi** =>  ${moment(guild.createdTimestamp).format('LT')} ${moment(guild.createdTimestamp).format('LL')} ${moment(guild.createdTimestamp).fromNow()}
+   ● **Sunucu Üye Bilgileri** => Bot Sayısı: ${guild.members.cache.filter(member => member.user.bot).size} - Normal Üye Sayısı: ${guild.members.cache.filter(member => !member.user.bot).size} - Aktif Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'online').size} - Kapalı Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'offline').size} - Boştaki Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'idle').size} - Rahatsız Etmeyindeki Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'dnd').size}
+   ● **Sunucuyla Alakalı Diğer Bilgiler** => Rol Sayısı: ${guild.roles.cache.size} - Emoji Sayısı: ${guild.emojis.cache.size} - Kanal Sayısı: ${guild.channels.cache.filter(channel => channel.type === 'text').size} - Sesli Kanal Sayısı: ${guild.channels.cache.filter(channel => channel.type === 'voice').size} - Boost Sayısı: ${guild.premiumSubscriptionCount || 'Sunucuya Boost Basılmamış!'} - Boost Seviyesi: ${guild.premiumTier ? `Seviye ${guild.premiumTier}` : 'Sunucuya Boost Basılmamış!'}
+   ● Toplamda: **${guild.memberCount}** kullanıcı bünyemize katıldı!
+   ● Sunucu Sayım: **${client.guilds.cache.size}** - Kullanıcı Sayım: **${client.guilds.cache.reduce((a, b) => a + b.memberCount, 0).toLocaleString()}**
+   `)
+   .setFooter(client.user.username, client.user.avatarURL())
+   kanal.send(giriş).catch(console.error);
+});
 
-🤝 - Partner ; Partner Komutlarını Atar
-} {color:000046};yes]; ]`})
-bot.awaitedCommand({
- name: "byardım",
- code: `$editMessage[$message[1];{title:Yardım}{footer:$username#$discriminator İstedi:$authorAvatar}{description:
-😂 - Eğlence: Eğlence Komutlarını Atar
+client.on("guildDelete", guild => {
+ let kanal = client.channels.cache.find(r => r.id === "921134084275716117")
+ let çıkış = new Discord.MessageEmbed()
+   .setColor("BLUE")
+   .setTitle(`${guild.name} Adlı sunucudan atıldım!`)
+   .setDescription(`
+   ● **Sunucu Adı** => ${guild.name}
+   ● **Sunucu ID** => ${guild.id}
+   ● **Sunucu Üye Sayısı** => ${guild.memberCount}
+   ● **Sunucu Sahip Bilgileri** => İD: ${guild.ownerID} - İsim: ${guild.owner} - Ad: ${guild.owner.user.tag}
+   ● **Sunucu Bölgesi** => ${guild.region}
+   ● **Sunucu Kurulum Tarihi** =>  ${moment(guild.createdTimestamp).format('LT')} ${moment(guild.createdTimestamp).format('LL')} ${moment(guild.createdTimestamp).fromNow()}
+   ● **Sunucu Üye Bilgileri** => Bot Sayısı: ${guild.members.cache.filter(member => member.user.bot).size} - Normal Üye Sayısı: ${guild.members.cache.filter(member => !member.user.bot).size} - Aktif Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'online').size} - Kapalı Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'offline').size} - Boştaki Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'idle').size} - Rahatsız Etmeyindeki Üye Sayısı: ${guild.members.cache.filter(member => member.presence.status === 'dnd').size}
+   ● **Sunucuyla Alakalı Diğer Bilgiler** => Rol Sayısı: ${guild.roles.cache.size} - Emoji Sayısı: ${guild.emojis.cache.size} - Kanal Sayısı: ${guild.channels.cache.filter(channel => channel.type === 'text').size} - Sesli Kanal Sayısı: ${guild.channels.cache.filter(channel => channel.type === 'voice').size} - Boost Sayısı: ${guild.premiumSubscriptionCount || 'Sunucuya Boost Basılmamış!'} - Boost Seviyesi: ${guild.premiumTier ? `Seviye ${guild.premiumTier}` : 'Sunucuya Boost Basılmamış!'}
+   ● Toplamda: **${guild.memberCount}** kullanıcı eksildi!
+   ● Sunucu Sayım: **${client.guilds.cache.size}** - Kullanıcı Sayım: **${client.guilds.cache.reduce((a, b) => a + b.memberCount, 0).toLocaleString()}**
+   `)
+   .setFooter(client.user.username, client.user.avatarURL())
+ kanal.send(çıkış).catch(console.error);
+});
+//
+client.on("message", msg => {
+	const westrabumbe = new Discord.MessageEmbed()
+	.setDescription(`Prefixim: **${prefix}**\n Yardım için: **${prefix}yardım**`)
+  if (msg.content.includes(`<@${client.user.id}>`) || msg.content.includes(`<@!${client.user.id}>`)) {
+    msg.channel.send(westrabumbe);
+  }
+});
 
-👤 - Kullanıcı: Herkesin Kullanabileceği Komutları Atar
+// sa-as
 
-⚔️ - Moderasyon: Sunucu Ayarları İçin Komutları Atar
 
-💻 - Yapımcı: Sadece Yapımcının Kullanabilceği Komutları Atar
+   const saasembed = new Discord.MessageEmbed()
+.setDescription('Aleyküm selam. Hoş geldin!')
+.setTimestamp()
+.setColor(0x36393E)
+   
+ client.on("message", async msg => {
+  let saas = await db.fetch(`saas_${msg.guild.id}`);
+  if (saas == 'kapali') return;
+  if (saas == 'acik') {
+  if (msg.content.toLowerCase() === 'sa' || msg.content.toLowerCase() == 'selam' || msg.content.toLowerCase() == 'selamun aleyküm' || msg.content.toLowerCase() == 'sea' || msg.content.toLowerCase() == 'sae' || msg.content.toLowerCase() == 'selamün aleyküm' || msg.content.toLowerCase() == 'saa' || msg.content.toLowerCase() == 'seaa') {
+    msg.channel.send(saasembed).then(msg => msg.delete({ timeout: 8000, reason: '.' }));
+  }
+  }
+});
+// ban rol kanal koruma 
+/*
+client.on("roleCreate", async role => {
+  const entry = await role.guild
+    .fetchAuditLogs({ type: "ROLE_CREATE" })
+    .then(audit => audit.entries.first());
+  let rol = await db.fetch(`rolrol_${role.guild.id}`);
+  let kontrol = await db.fetch(`dil_${role.guild.id}`);
+  let kanal = await db.fetch(`rolk_${role.guild.id}`);
+  if (!kanal) return;
+  if (kontrol == "agayokaga") {
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == role.guild.owner.id) return;
+    role.delete();
 
-🤝 - Partner: Partner Komutlarını Atar} {color:000046}
-]
-`})
-bot.awaitedCommand({
- name: "eğlencey",
- code: `
- $editMessage[$message[1];{footer:🔄 - Menüye Dönmek İçin Tıklayın}
-{author:Eğlence Komutlarıma Hoşgeldin $username:$authorAvatar} {description:\`$getServerVar[prefix]düello\`, \`$getServerVar[prefix]aşkölçer\`, \`$getServerVar[prefix]amongus\`} {color:000046} 
-]
- `
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Rol Açıldı!`)
+      .setColor(0x36393F)
+      .addField(`Açan:`, entry.executor.tag)
+      .addField(`Açılan Rol:`, role.name)
+      .addField(`Sonuç:`, `Rol Geri Silindi!`);
+    client.channels.cache.get(kanal).send(embed);
+  } else {
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == role.guild.owner.id) return;
+    role.delete();
+
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Rol Açıldı!`)
+      .setColor(0x36393F)
+      .addField(`Rolu Açan:`, entry.executor.tag)
+      .addField(`Açılan Rol:`, role.name)
+      .addField(`Sonuç:`, `Açılan Rol Geri Silindi!`);
+    client.channels.cache.get(kanal).send(embed);
+  }
+});
+
+client.on("channelDelete", async channel => {
+  let kontrol = await db.fetch(`dil_${channel.guild.id}`);
+  let kanal = await db.fetch(`kanalk_${channel.guild.id}`);
+  if (!kanal) return;
+  if (kontrol == "agayokaga") {
+    const entry = await channel.guild
+      .fetchAuditLogs({ type: "CHANNEL_DELETE" })
+      .then(audit => audit.entries.first());
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == channel.guild.owner.id) return;
+    channel.guild.channels.create(channel.name, channel.type, [
+      {
+        id: channel.guild.id,
+        position: channel.calculatedPosition
+      }
+    ]);
+
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Kanal Silindi!`)
+      .addField(`Silen:`, entry.executor.tag)
+
+      .addField(`Silinen Kanal:`, channel.name)
+      .addField(`Sonuç:`, `Kanal Geri Açıldı!`)
+
+      .setColor(0x36393F);
+    client.channels.cache.get(kanal).send(embed);
+  } else {
+    const entry = await channel.guild
+      .fetchAuditLogs({ type: "CHANNEL_DELETE" })
+      .then(audit => audit.entries.first());
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == channel.guild.owner.id) return;
+    channel.guild.channels.create(channel.name, channel.type, [
+      {
+        id: channel.guild.id,
+        position: channel.calculatedPosition
+      }
+    ]);
+
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Kanal Silindi!`)
+      .addField(`Kanalı Silen:`, entry.executor.tag)
+      .setColor(0x36393F)
+      .addField(`Silinen Kanal:`, channel.name)
+      .addField(`Sonuç:`, `Silinen Kanal Geri Açıldı!`);
+    client.channels.cache.get(kanal).send(embed);
+  }
+});
+
+client.on("channelCreate", async channel => {
+  let kontrol = await db.fetch(`dil_${channel.guild.id}`);
+  let kanal = await db.fetch(`kanalk_${channel.guild.id}`);
+  if (!kanal) return;
+  if (kontrol == "agayokaga") {
+    const entry = await channel.guild
+      .fetchAuditLogs({ type: "CHANNEL_CREATE" })
+      .then(audit => audit.entries.first());
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == channel.guild.owner.id) return;
+    channel.delete();
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Kanal Açıldı!`)
+      .setColor(0x36393F)
+      .addField(`Açan:`, entry.executor.tag)
+      .addField(`Açılan Kanal:`, channel.name)
+      .addField(`Sonuç:`, `Kanal Geri Silindi!`);
+    client.channels.cache.get(kanal).send(embed);
+  } else {
+    const entry = await channel.guild
+      .fetchAuditLogs({ type: "CHANNEL_CREATE" })
+      .then(audit => audit.entries.first());
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == channel.guild.owner.id) return;
+    channel.delete();
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Kanal Açıldı!`)
+      .setColor(0x36393F)
+      .addField(`Kanalı Açan:`, entry.executor.tag)
+      .addField(`Açılan Kanal:`, channel.name)
+      .addField(`Sonuç:`, `Açılan Kanal Geri Silindi.`);
+    client.channels.cache.get(kanal).send(embed);
+  }
+});
+// Ban ve Rol Koruma Devam
+client.on("guildBanAdd", async (guild, user) => {
+  let kontrol = await db.fetch(`dil_${guild.id}`);
+  let kanal = await db.fetch(`bank_${guild.id}`);
+  let rol = await db.fetch(`banrol_${guild.id}`);
+  if (!kanal) return;
+  if (kontrol == "agayokaga") {
+    const entry = await guild
+      .fetchAuditLogs({ type: "GUILD_BAN_ADD" })
+      .then(audit => audit.entries.first());
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == guild.owner.id) return;
+    guild.members.unban(user.id);
+    guild.members.cache.get(entry.executor.id).kick();
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Biri Yasaklandı!`)
+      .setColor(0x36393F)
+      .addField(`Yasaklayan:`, entry.executor.tag)
+      .addField(`Yasaklanan Kişi:`, user.name)
+      .addField(
+        `Sonuç:`,
+        `Yasaklayan kişi sunucudan açıldı!\nve yasaklanan kişinin yasağı kalktı!`
+      );
+    client.channels.cache.get(kanal).send(embed);
+  } else {
+    const entry = await guild
+      .fetchAuditLogs({ type: "GUILD_BAN_ADD" })
+      .then(audit => audit.entries.first());
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == guild.owner.id) return;
+    guild.members.unban(user.id);
+    guild.members.cache.get(entry.executor.id).kick();
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Biri Yasaklandı!`)
+      .setColor(0x36393F)
+      .addField(`Yasaklayan:`, entry.executor.tag)
+      .addField(`Yasaklanan Kişi:`, user.name)
+      .addField(
+        `Sonuç:`,
+        `Yasaklayan kişi sunucudan atıldı ve yasaklanan kişinin yasağı kalktı. `
+      );
+    client.channels.cache.get(kanal).send(embed);
+  }
+});
+client.on("roleDelete", async role => {
+  const entry = await role.guild
+    .fetchAuditLogs({ type: "ROLE_DELETE" })
+    .then(audit => audit.entries.first());
+  let rol = await db.fetch(`rolrol_${role.guild.id}`);
+  let kontrol = await db.fetch(`dil_${role.guild.id}`);
+  let kanal = await db.fetch(`rolk_${role.guild.id}`);
+  if (!kanal) return;
+  if (kontrol == "TR_tr") {
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == role.guild.owner.id) return;
+    role.guild.roles
+      .create({
+        data: {
+          name: role.name
+        }
+      })
+      .then(r => r.setPosition(role.position));
+
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Rol Silindi!`)
+      .setColor(0x36393F)
+      .addField(`Silen:`, entry.executor.tag)
+      .addField(`Silinen Rol:`, role.name)
+      .addField(`Sonuç:`, `Rol Geri Açıldı!`);
+    client.channels.cache.get(kanal).send(embed);
+  } else {
+    if (entry.executor.id == client.user.id) return;
+    if (entry.executor.id == role.guild.owner.id) return;
+    role.guild.roles
+      .create({
+        data: {
+          name: role.name
+        }
+      })
+      .then(r => r.setPosition(role.position));
+
+    const embed = new Discord.MessageEmbed()
+      .setTitle(`Bir Rol Silindi!`)
+      .setColor(0x36393F)
+      .addField(`Silen:`, entry.executor.tag)
+      .addField(`Silinen Rol:`, role.name)
+      .addField(`Sonuç:`, `Silinen Rol Geri Açıldı!`);
+    client.channels.cache.get(kanal).send(embed);
+  }
+});
+     */
+/// modlog sistemi
+
+client.on("messageDelete", async (message) => {
+
+  if (message.author.bot || message.channel.type == "dm") return;
+
+  let log = message.guild.channels.cache.get(await db.fetch(`log_${message.guild.id}`));
+
+  if (!log) return;
+
+  const embed = new Discord.MessageEmbed()
+
+    .setTitle(message.author.username + " | Mesaj Silindi")
+
+    .addField("Kullanıcı: ", message.author)
+
+    .addField("Kanal: ", message.channel)
+
+    .addField("Mesaj: ", "" + message.content + "")
+
+  log.send(embed)
+
 })
-bot.awaitedCommand({
- name: "kullanıcıy",
- code: `
- $editMessage[$message[1];{footer:🔄 - Menüye Dönmek İçin Tıklayın}
-{author:Kullanıcı Komutlarıma Hoşgeldin $username:$authorAvatar} {description: \`$getServerVar[prefix]profil\`, \`$getServerVar[prefix]banlist\`, \`$getServerVar[prefix]davet\`, \`$getServerVar[prefix]istatistik\`, \`$getServerVar[prefix]öneri\`} {color:000046} 
-]
- `
-})
-bot.awaitedCommand({
- name: "mody",
- code: `
- $editMessage[$message[1];{footer:🔄 - Menüye Dönmek İçin Tıklayın}
-{author:Moderasyon Komutlarıma Hoşgeldin $username:$authorAvatar} {description:\`$getServerVar[prefix]ayarla\`, \`$getServerVar[prefix]abone\`, \`$getServerVar[prefix]ban\`, \`$getServerVar[prefix]sil\`, \`$getServerVar[prefix]forceban\`, \`$getServerVar[prefix]unban\`, \`$getServerVar[prefix]çekiliş\`, \`$getServerVar[prefix]kick\`, \`$getServerVar[prefix]uyarı\`, \`$getServerVar[prefix]uyarısil\`, \`$getServerVar[prefix]uyarılar\`} {color:000046} 
-]
- `
-})
-bot.awaitedCommand({
-  name: "yapımcıy",
-  code:`
-  $editMessage[$message[1];{footer:🔄 - Menüye Dönmek İçin Tıklayın}
-{author:Yapımcı Komutlarıma Hoşgeldin $username:$authorAvatar} {description:\`$getServerVar[prefix]eval\`} {color:000046} 
-]
-  `
-})
-bot.awaitedCommand({
-  name: "partnery",
-  code:`
-  $editMessage[$message[1];{footer:🔄 - Menüye Dönmek İçin Tıklayın}
-{author:Partner Komutlarıma Hoşgeldin $username:$authorAvatar} {description:\`$getServerVar[prefix]partner-bul\`, \`$getServerVar[prefix]partner\`, \`$getServerVar[prefix]ayarlar\`, \`$getServerVar[prefix]onayla\`, \`$getServerVar[prefix]reddet\`} {color:000046} 
-]
-`
-})
-bot.command({
-  name:"abone",
-  code:`
-  $reactionCollector[$splitText[1];$authorID;1h;✅,❌;evet,hyr;yes]
-  $textSplit[$sendMessage[{color:YELLOW}{thumbnail:$userAvatar[$mentioned[1]]}{description:
-  <@$mentioned[1]> Kişisine Abone Vermeyi Kabul Ediyormusunuz ?
-  
-  Evet İçin :white_check_mark:  Emojisine Hayır İçin :x: Emojisine Tıklayınız.};yes]]
-  $onlyIf[$hasRole[$mentioned[1];$getServerVar[abonerol]]!=true;{color:RED}{author:$userTag[$mentioned[1]] Kişisinde Zaten Abone Rol Var ?:$authorAvatar}]
-  $onlyForChannels[$getServerVar[abonekanal];{color:RED}{description:Bu Komut Sadece <#$getServerVar[abonekanal]> Kanalında Kullanılabilir !}]
-  $onlyIf[$mentioned[1]!=;{color:RED}{author:Rol Vereceğim Kişiyi Etiketlemen Gerekiyor !:$authorAvatar}]
-  $onlyIf[$hasRole[$authorID;$getServerVar[aboneyt]]!=false;{color:RED}{author:Bu Komut Sadece $roleName[$getServerVar[aboneyt]] Kişilerine Özeldir !:$authorAvatar}]
-  
-  
-  $onlyIf[$getServerVar[aboneyt]!=yok;{color:RED}{author:Abone Yetkilisi Rolü Ayarlı Değil !:$authorAvatar}]
-  $onlyIf[$getServerVar[abonekanal]!=yok;{color:RED}{author:Abone Kanalı Ayarlı Değil !:$authorAvatar}]
-  $onlyIf[$getServerVar[abonerol]!=yok;{color:RED}{author:Abone Rolü Ayarlı Değil !:$authorAvatar}]`
-})
-bot.awaitedCommand({
-  name:"evet",
-  code:`
-  $clearReactions[$channelID;$message[1];all]
-  $editMessage[$message[1];{color:GREEN}
-  {author:$userTag[$mentioned[1]] Kişisine Abone Rolü Başarıyla Verilmiştir !:$userAvatar[$mentioned[1]]}]
-  $giveRole[$mentioned[1];$getServerVar[abonerol]]
-  `
-})
-bot.awaitedCommand({
-  name:"hyr",
-  code:`
-  $clearReactions[$channelID;$message[1];all]
-  $editMessage[$message[1];{color:RED}
-  {author:$userTag[$mentioned[1]] Kişisine Abone Rolü Vermeyi Reddettiniz !:$userAvatar[$mentioned[1]]}]
-  `
-})
-bot.command({
-    name:"premium",
-    code:`
-     $if[$toLowercase[$message[1]]==yap]
-       $setGlobalUserVar[premium;evet;$message[2]]
-       $title[❗️Kişiye Başarıyla Premium Verildi❗️]
-       $description[✅**Premium Verilen Kişi:** **$userTag[$message[2]]**]
-       $footer[| Komutu Kullanan Kişi $userTag;$authorAvatar]
-       $onlyIf[$getGlobalUserVar[premium;$message[2]]!=evet;{title:❗️Kişi Zaten Premium❗️}{color:303136}{delete:5s}]
-     $elseIf[$toLowercase[$message[1]]==çıkar] 
-      $setGlobalUserVar[premium;hayır;$message[2]]
-       $title[❗️Kişiden Başarıyla Premium Alındı❗️]
-       $description[✅**Premium Alınan Kişi:** **$userTag[$message[2]]**]
-       $footer[| Komutu Kullanan Kişi $userTag;$authorAvatar]
-       $onlyIf[$getGlobalUserVar[premium;$message[2]]!=hayır;{title:❗️Kişi Zaten Premium Değil❗️}{color:303136}{delete:5s}]
-     $endelseIf
-     $else
-      $title[❗️Yanlış Kullanım❗️]
-      $description[✅**Lütfen Geçerli Bir Eylem Yazın** **yap** - **çıkar**]
-     $endif
-     $onlyIf[$isBot[$message[2]]!=true;{title:❗️Bota Premium Ayarlayamam❗️}{color:303136}{delete:5s}]
-     $onlyIf[$charCount[$message[2]]==18;{title:❗️Lütfen Geçerli Bir ID girin❗️}{color:303136}{delete:5s}]
-     $onlyIf[$message[2]!=;{title:❗️Yanlış Kullanım❗️}{description:✅**Doğru Kullanım: !premium yap - çıkar id **}{color:303136}{delete:5s}]
-     $onlyForIDs[$botOwnerID[;];{title:❗️Geliştiricim Değilsin❗️}{color:303136}{delete:5s}]
-       $color[303136]
-       $deleteIn[5s]
-       $deletecommand
-    `
+
+client.on("messageUpdate", async (oldMessage, newMessage) => {
+
+  let modlog = await db.fetch(`log_${oldMessage.guild.id}`);
+
+  if (!modlog) return;
+
+  let embed = new Discord.MessageEmbed()
+
+  .setAuthor(oldMessage.author.username, oldMessage.author.avatarURL())
+
+  .addField("**Eylem:**", "Mesaj Düzenleme")
+
+  .addField("**Mesajın sahibi:**", `<@${oldMessage.author.id}> === **${oldMessage.author.id}**`)
+
+  .addField("**Eski Mesajı:**", `${oldMessage.content}`)
+
+  .addField("**Yeni Mesajı:**", `${newMessage.content}`)
+
+  .setTimestamp()
+
+  .setColor(0x36393F)
+
+  .setFooter(`Sunucu: ${oldMessage.guild.name} - ${oldMessage.guild.id}`, oldMessage.guild.iconURL())
+
+  .setThumbnail(oldMessage.guild.iconURL)
+
+  client.channels.cache.get(modlog).send(embed)
+
+});
+
+client.on("channelCreate", async(channel) => {
+
+  let modlog = await db.fetch(`log_${channel.guild.id}`);
+
+    if (!modlog) return;
+
+    const entry = await channel.guild.fetchAuditLogs({type: 'CHANNEL_CREATE'}).then(audit => audit.entries.first());
+
+    let kanal;
+
+    if (channel.type === "text") kanal = `<#${channel.id}>`
+
+    if (channel.type === "voice") kanal = `\`${channel.name}\``
+
+    let embed = new Discord.MessageEmbed()
+
+    .setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+    .addField("**Eylem:**", "Kanal Oluşturma")
+
+    .addField("**Kanalı Oluşturan Kişi:**", `<@${entry.executor.id}>`)
+
+    .addField("**Oluşturduğu Kanal:**", `${kanal}`)
+
+    .setTimestamp()
+
+    .setColor(0x36393F)
+
+    .setFooter(`Sunucu: ${channel.guild.name} - ${channel.guild.id}`, channel.guild.iconURL())
+
+    .setThumbnail(channel.guild.iconUR)
+
+    client.channels.cache.get(modlog).send(embed)
+
     })
 
-//-----------------VARİBLELER---------------\\
-bot.variables({
-	saas: 'kapalı',
-  prefix: 'e+',
-	emojimenüler: '',
-	emojiroller: '',
-	can: '100',
-	savaş: 'yok',
-	rakip: '',
-	iksirş: '',
-	cekilis: 'undefined',
-	karaliste: 'hayır',
-	ksebep: 'Bu Mesaj Var İse Siciliniz Temizdir !',
-	banka: '0',
-	para: '0',
-	elmas: '0',
-	altın: '0',
-	demir: '0',
-	laptop: '0',
-	günlük: '100',
-	aylık: '1000',
-	sahip: '99999',
-	kicksebep: '',
-	bansebep: '',
-  aboneyt: 'yok',
-  abonerol: 'yok',
-  abonekanal: 'yok',
-  premium: "hayır",
-  tuyarı: "0",
-  uyarı:"",
-  topab: "0",
-  botlog:"882649300562219049",//bot log kanalı idsi
-  botkanal:"882670082008973322",//bot ekle kanalı idsi
-  botyetkili:"882649251463708703",//yetkili ıdsi
-  başvuranbotu:"",//burayı boş bırak
-  ab:"",
-  //partner
-  psorumlusu:"",
-  psorumlusuu:"hayır",
-  ptext:"",
-  ptextt:"hayır",
-  pkanal:"",
-  pkanall:"hayır",
-  plog:"",
-  plogg:"hayır",
-  partner:"kapalı",
-  ps:"no",
-  para:"5"
-});
-//----------------VARİBLELER SON-------------\\
-bot.command({
-	name: 'eval',
-	code: `$eval[$message]
-$onlyForIDs[525539487774801921;Bu Komutu Sadece Sahibim Kullanabilir]`,
-	nonPrefixed: false
-});
-bot.leaveCommand({
-  channel:"882649300562219049",
-  code:`
-  $author[Baybay $userTag ve botu $userTag[$getServerVar[başvuranbotu;$authorID]];$authorAvatar]
-  $description[$userTag sunucudan ayrıldığı için botu $userTag[$getServerVar[başvuranbotu;$authorID]] sunucudan atıldı]
-  $color[GREEN]
-  $kick[$getServerVar[başvuranbotu;$authorID]]
-  $suppressErrors
-`
-  })
-//--------------------- DİĞER KOMUTLAR -------------------------\\
-bot.command({
-	name: 'aşkölçer',
-	aliases: ['aşk', 'love', 'lovecheck'],
-	code: `$title[ASK KONTROLU 💕]
-$description[$username ile <@$mentioned[1]> in ask yüzdesi $random[0;100]%]
-$image[https://api.cool-img-api.ml/ship?user=$replaceText[$replaceText[$replaceText[$userAvatar[$authorID]&user2=$userAvatar[$mentioned[1;yes]];webp;png;-1];jpg;png;-1];gif;png;-1]]
-$color[303136]
-$onlyIf[$mentioned[1]!=$authorid;$customEmoji[yanlis] Kendine aşık olamazsın.]
-$onlyIf[$mentioned[1]!=;$customEmoji[yanlis] Aşk Ölçmek için birini etiketlemen gerekiyor]
-`
-});
-bot.command({
-	name: '$alwaysExecute',
-	code: `
-$useChannel[860360406211362817]
-$author[Bota Gelen Mesaj!;$authorAvatar]
-$addField[Mesaj;$message]
-$addField[Gönderen ID;$authorID]
-$addField[Gönderen;$userTag]
-$description[$thumbnail[$authorAvatar]]
-$addTimeStamp
-$footer[]
-$color[ffd700]
-$suppressErrors
-$onlyIf[$isBot[$authorID]!=true;]
-$onlyIf[$guildID==;]
-`
-});
-bot.command({
-	name: 'düello',
-	aliases: ['duello', 'savaş'],
-	code: `
-  $setUserVar[rakip;$mentioned[1];$authorID]
-  $setUserVar[rakip;$authorID;$mentioned[1]]
-  <@$mentioned[1]>, $username size bir düello isteği gönderdi. Kabul etmek için \`kabul\` reddetmek için \`red\` yazın. Eğer hiçbirşey yazmazsanız 1 dakika içinde istek iptal edilecek.
-  $awaitMessages[$mentioned[1];1m;kabul,red;kabul,red;:x: 1 dakika geçti! Düello iptal edildi!]
-  $onlyIf[$mentioned[1]!=$authorid;Neden kendinle düello yapmaya çalışıyorsun?]
-  $onlyIf[$mentioned[1]!=;:x: Lütfen birini etiketle]
-  $onlyIf[$getGlobalUserVar[karaliste;$authorID]!=evet;Hop Karalistedesin Dostum.
-  Karaliste Sebebin \`\`$getGlobalUserVar[ksebep;$authorID]\`\`]`
-});
-bot.awaitedCommand({
-	name: 'kabul',
-	code: `
-  $awaitMessages[$authorID;1m;saldır,iksir,kaç;saldır,iksir,kaç;:x: 1 dakika geçti! Düello iptal edildi!]
-   $setUserVar[savaş;var;$getUserVar[rakip;$authorID]]
-  $setUserVar[savaş;var;$authorID]
-  $color[GREEN]
-  $author[Düello Başarıyla Kabul Edildi;$authorAvatar]
-  $description[
-    $userTag[$getUserVar[rakip;$authorID]] Kişisinden Gelen Düello İsteğini Kabul Ettin !
+client.on("channelDelete", async(channel) => {
 
-    İlk sen saldıracaksın !
-    saldır , iksir , kaç
-  ]`
-});
-bot.awaitedCommand({
-	name: 'saldır',
-	code: `
-  $if[$getUserVar[can;$getUserVar[rakip;$authorID]]>=0]
-   $awaitMessages[$getUserVar[rakip;$authorID];1m;saldır,iksir,kaç;saldır,iksir,kaç;:x: 1 dakika geçti! Düello iptal edildi!]
-  $color[GREEN]
-  $author[Kişiye Toplam $random[50;100] Hasar Verdin !;$authorAvatar]
-  $description[
-    Anlık Can Durumları
+  let modlog = await db.fetch(`log_${channel.guild.id}`);
 
-    $userTag[$authorID] = $getUserVar[can;$authorID] :hearts:
-    $userTag[$getUserVar[rakip;$authorID]] = $getUserVar[can;$getUserVar[rakip;$authorID]] :hearts:
-  ]
-  $footer[Sıra Rakibinde ! saldır , iksir , kaç yazınız]
-  $setUserVar[can;$sub[$getUserVar[can;$getUserVar[rakip;$authorID]];$random[50;100]];$getUserVar[rakip;$authorID]]
-   $onlyIf[$getUserVar[savaş;$authorID]!=yok;]
-   $elseIf[$getUserVar[can;$getUserVar[rakip;$authorID]]<=0]
-   $color[GREEN]
-   $description[$thumbnail[$authorAvatar]
-   Savaş Sona Erdi !
+    if (!modlog) return;
+
+    const entry = await channel.guild.fetchAuditLogs({type: 'CHANNEL_DELETE'}).then(audit => audit.entries.first());
+
+    let embed = new Discord.MessageEmbed()
+
+    .setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+    .addField("**Eylem:**", "Kanal Silme")
+
+    .addField("**Kanalı Silen Kişi:**", `<@${entry.executor.id}>`)
+
+    .addField("**Silinen Kanal:**", `\`${channel.name}\``)
+
+    .setTimestamp()
+
+    .setColor(0x36393F)
+
+    .setFooter(`Sunucu: ${channel.guild.name} - ${channel.guild.id}`, channel.guild.iconURL())
+
+    .setThumbnail(channel.guild.iconURL)
+
+    client.channels.cache.get(modlog).send(embed)
+
+    })
+
+client.on("roleCreate", async(role) => {
+
+let modlog = await db.fetch(`log_${role.guild.id}`);
+
+if (!modlog) return;
+
+const entry = await role.guild.fetchAuditLogs({type: 'ROLE_CREATE'}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Rol Oluşturma")
+
+.addField("**Rolü oluşturan kişi:**", `<@${entry.executor.id}>`)
+
+.addField("**Oluşturulan rol:**", `\`${role.name}\` **=** \`${role.id}\``)
+
+.setTimestamp()
+
+.setFooter(`Sunucu: ${role.guild.name} - ${role.guild.id}`, role.guild.iconURL)
+
+.setColor(0x36393F)
+
+.setThumbnail(role.guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+
+client.on("roleDelete", async(role) => {
+
+let modlog = await db.fetch(`log_${role.guild.id}`);
+
+if (!modlog) return;
+
+const entry = await role.guild.fetchAuditLogs({type: 'ROLE_DELETE'}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Rol Silme")
+
+.addField("**Rolü silen kişi:**", `<@${entry.executor.id}>`)
+
+.addField("**Silinen rol:**", `\`${role.name}\` **=** \`${role.id}\``)
+
+.setTimestamp()
+
+.setFooter(`Sunucu: ${role.guild.name} - ${role.guild.id}`, role.guild.iconURL)
+
+.setColor(0x36393F)
+
+.setThumbnail(role.guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+
+client.on("emojiCreate", async(emoji) => {
+
+let modlog = await db.fetch(`log_${emoji.guild.id}`);
+
+if (!modlog) return;
+
+const entry = await emoji.guild.fetchAuditLogs({type: 'EMOJI_CREATE'}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Emoji Oluşturma")
+
+.addField("**Emojiyi oluşturan kişi:**", `<@${entry.executor.id}>`)
+
+.addField("**Oluşturulan emoji:**", `${emoji} - İsmi: \`${emoji.name}\``)
+
+.setTimestamp()
+
+.setColor(0x36393F)
+
+.setFooter(`Sunucu: ${emoji.guild.name} - ${emoji.guild.id}`, emoji.guild.iconURL)
+
+.setThumbnail(emoji.guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+
+client.on("emojiDelete", async(emoji) => {
+
+let modlog = await db.fetch(`log_${emoji.guild.id}`);
+
+if (!modlog) return;
+
+const entry = await emoji.guild.fetchAuditLogs({type: 'EMOJI_DELETE'}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Emoji Silme")
+
+.addField("**Emojiyi silen kişi:**", `<@${entry.executor.id}>`)
+
+.addField("**Silinen emoji:**", `${emoji}`)
+
+.setTimestamp()
+
+.setFooter(`Sunucu: ${emoji.guild.name} - ${emoji.guild.id}`, emoji.guild.iconURL)
+
+.setColor(0x36393F)
+
+.setThumbnail(emoji.guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+
+client.on("emojiUpdate", async(oldEmoji, newEmoji) => {
+
+let modlog = await db.fetch(`log_${oldEmoji.guild.id}`);
+
+if (!modlog) return;
+
+const entry = await oldEmoji.guild.fetchAuditLogs({type: 'EMOJI_UPDATE'}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Emoji Güncelleme")
+
+.addField("**Emojiyi güncelleyen kişi:**", `<@${entry.executor.id}>`)
+
+.addField("**Güncellenmeden önceki emoji:**", `${oldEmoji} - İsmi: \`${oldEmoji.name}\``)
+
+.addField("**Güncellendikten sonraki emoji:**", `${newEmoji} - İsmi: \`${newEmoji.name}\``)
+
+.setTimestamp()
+
+.setColor(0x36393F)
+
+.setFooter(`Sunucu: ${oldEmoji.guild.name} - ${oldEmoji.guild.id}`, oldEmoji.guild.iconURL)
+
+.setThumbnail(oldEmoji.guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+
+client.on("guildBanAdd", async(guild, user) => {
+
+let modlog = await db.fetch(`log_${guild.id}`);
+
+if (!modlog) return;
+
+const entry = await guild.fetchAuditLogs({type: "MEMBER_BAN_ADD"}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Yasaklama")
+
+.addField("**Kullanıcıyı yasaklayan yetkili:**", `<@${entry.executor.id}>`)
+
+.addField("**Yasaklanan kullanıcı:**", `**${user.tag}** - ${user.id}`)
+
+.addField("**Yasaklanma sebebi:**", `${entry.reason}`)
+
+.setTimestamp()
+
+.setColor(0x36393F)
+
+.setFooter(`Sunucu: ${guild.name} - ${guild.id}`, guild.iconURL)
+
+.setThumbnail(guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+
+client.on("guildBanRemove", async(guild, user) => {
+
+let modlog = await db.fetch(`log_${guild.id}`);
+
+if (!modlog) return;
+
+const entry = await guild.fetchAuditLogs({type: "MEMBER_BAN_REMOVE"}).then(audit => audit.entries.first());
+
+let embed = new Discord.MessageEmbed()
+
+.setAuthor(entry.executor.username, entry.executor.avatarURL())
+
+.addField("**Eylem:**", "Yasak kaldırma")
+
+.addField("**Yasağı kaldıran yetkili:**", `<@${entry.executor.id}>`)
+
+.addField("**Yasağı kaldırılan kullanıcı:**", `**${user.tag}** - ${user.id}`)
+
+.setTimestamp()
+
+.setColor(0x36393F)
+
+.setFooter(`Sunucu: ${guild.name} - ${guild.id}`, guild.iconURL)
+
+.setThumbnail(guild.iconURL)
+
+client.channels.cache.get(modlog).send(embed)
+
+})
+// mod log son ///
+
+
+
+//küfür engel //
+
+const küfür = [
+        "siktir",
+        "fuck",
+        "puşt",
+        "pust",
+        "piç",
+        "sikerim",
+        "sik",
+        "yarra",
+        "yarrak",
+        "amcık",
+        "orospu",
+        "orosbu",
+        "orosbucocu",
+        "oç",
+        ".oc",
+        "ibne",
+        "yavşak",
+        "bitch",
+        "dalyarak",
+        "amk",
+        "awk",
+        "taşak",
+        "taşşak",
+        "daşşak",
+		"sikm",
+		"sikim",
+		"sikmm",
+		"skim",
+		"skm",
+		"sg"
+      ];
+client.on("messageUpdate", async (old, nev) => {
+  
+    if (old.content != nev.content) {
+    let i = await db.fetch(`küfür.${nev.member.guild.id}.durum`);
+    let y = await db.fetch(`küfür.${nev.member.guild.id}.kanal`);
+   if (i) {
+      
+      if (küfür.some(word => nev.content.includes(word))) {
+      if (nev.member.hasPermission("BAN_MEMBERS")) return ;
+       //if (ayarlar.gelistiriciler.includes(nev.author.id)) return ;
+ const embed = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`${nev.author} , **Mesajını editleyerek küfür etmeye çalıştı!**`)
+            .addField("Mesajı:",nev)
+        
+            nev.delete();
+            const embeds = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`${nev.author} , **Mesajı editleyerek küfür etmene izin veremem!**`) 
+          client.channels.cache.get(y).send(embed)
+            nev.channel.send(embeds).then(msg => msg.delete({timeout:5000}));
+          
+      }
+    } else {
+    }
+    if (!i) return;
+  }
+});
+
+client.on("message", async msg => {
+
+     
+    if(msg.author.bot) return;
+    if(msg.channel.type === "dm") return;
+         let y = await db.fetch(`küfür.${msg.member.guild.id}.kanal`);
    
-   Bu Savaşın Kazananı = $userTag[$authorID] Oldu !
-   Savaş Ödülün İse = Bir $randomText[Savaş Baltası :axe:;Suikast Bıçağı :knife:;İkili Kılıç :crossed_swords:]
-   ]
-   $setUserVar[rakip;;$authorID]
-   $wait[1ms]
-   $setUserVar[can;1000;$authorID]
-   $setUserVar[can;1000;$getUserVar[rakip;$authorID]]
-  $setUserVar[savaş;yok;$getUserVar[rakip;$authorID]]
-$setUserVar[savaş;yok;$authorID]
-$setUserVar[rakip;;$getUserVar[rakip;$authorID]
-   $endElseIf
-   $endif
-  `
+    let i = await db.fetch(`küfür.${msg.member.guild.id}.durum`);
+          if (i) {
+              if (küfür.some(word => msg.content.toLowerCase().includes(word))) {
+                try {
+                 if (!msg.member.hasPermission("MANAGE_GUILD")) {
+                 //  if (!ayarlar.gelistiriciler.includes(msg.author.id)) return ;
+     msg.delete({timeout:750});
+                    const embeds = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`<@${msg.author.id}> , **Bu sunucuda küfür yasak!**`)
+      msg.channel.send(embeds).then(msg => msg.delete({timeout: 5000}));
+                const embed = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`${msg.author} , **Küfür etmeye çalıştı!**`) .addField("Mesajı:",msg)
+               client.channels.cache.get(y).send(embed)
+                  }              
+                } catch(err) {
+                  console.log(err);
+                }
+              }
+          }
+         if(!i) return ;
 });
-bot.awaitedCommand({
-	name: 'iksir',
-	code: `
-  $if[$getUserVar[iksirş;$authorID]==yok]
-  $channelSendMessage[$channelID;{color:RED}{description:Şuanki Can Miktarın = $getUserVar[can;$authorID] :hearts:
+
+//küfür engel son //
+// kayıt sistemi
+
+/*
+
+// AYARLANABİLİR KAYIT KANAL //
+// AYARLANABİLİR KAYIT KANAL //
+client.on("guildMemberAdd", member => {
+  let guild = member.guild;
+  let kanal = db.fetch(`kayıthg_${member.guild.id}`);
+  let kayıtçı = db.fetch(`kayıtçırol_${member.guild.id}`);
+  let aylartoplam = {
+    "01": "Ocak",
+    "02": "Şubat",
+    "03": "Mart",
+    "04": "Nisan",
+    "05": "Mayıs",
+    "06": "Haziran",
+    "07": "Temmuz",
+    "08": "Ağustos",
+    "09": "Eylül",
+    "10": "Ekim",
+    "11": "Kasım",
+    "12": "Aralık"
+  };
+  let aylar = aylartoplam;
+
+  let user = client.users.cache.get(member.id);
+  require("moment-duration-format");
+
+  const kurulus = new Date().getTime() - user.createdAt.getTime();
+  const ayyy = moment.duration(kurulus).format("M");
+  var kontrol = [];
+
+  if (ayyy < 1) {
+    kontrol = "**Şüpheli** ";
+  }
+  if (ayyy > 1) {
+    kontrol = "**Güvenilir** ";
+  }
+
+  if (!kanal) return;
+
+  ///////////////////////
+
+  let randomgif = [ 
+             "https://media.discordapp.net/attachments/744976703163728032/751451554132918323/tenor-1.gif", "https://media.discordapp.net/attachments/744976703163728032/751451693992116284/black.gif", "https://media.discordapp.net/attachments/765870655958548490/765871557993824256/tumblr_ozitqtbIIf1tkflzao1_540.gif", "https://media.discordapp.net/attachments/765870655958548490/765871565257965578/68747470733a2f2f692e70696e696d672e636f6d2f6f726967696e616c732f32622f61352f31312f32626135313161663865.gif"];
+
+  ///////////////////
+  const embed = new Discord.MessageEmbed()
+    .setColor(0x36393F)
+    .setImage(randomgif[Math.floor(Math.random() * randomgif.length)])
+    .setThumbnail(
+      user.avatarURL({
+        dynamic: true,
+        format: "gif",
+        format: "png",
+        format: "jpg",
+        size: 2048
+      })
+    )
+
+ //
+  .setDescriptio(`**Hoş geldin!** ${
+        member.user
+      }, seninle beraber **${
+        guild.memberCount
+      }** kişi olduk! \n <a:> Kaydının yapılması için **isim** ve **yaş** yazman gerek. \n Hesap kuruluş tarihi: **${moment(
+        user.createdAt
+      ).format("DD")} ${aylar[moment(user.createdAt).format("MM")]} ${moment(
+        user.createdAt
+      ).format(
+        "YYYY HH:mm:ss"
+       )}** \n Bu vatandaş: ${kontrol} \n <@&${kayıtçı}> rolündeki yetkililer sizinle ilgilenecektir.`);
+  //
+  client.channels.cache.get(kanal).send(embed);
+  client.channels.cache.get(kanal).send(`<@&${kayıtçı}>`);
+});
   
-  Kötü Haber Maalesef Aldığın İksir Bi Halta Yaramadı !}
-  {footer:Sıra Sende $userTag[$getUserVar[rakip;$authorID]] ! saldır , iksir , kaç yazınız:$userAvatar[$getUserVar[rakip;$authorID]]}
-  ]
-  $elseIf[$getUserVar[iksirş;$authorID]==var]
-  $setUserVar[can;$sum[$getUserVar[can;$authorID];$random[50;100]];$authorID]
-  $wait[1ms]
-  $channelSendMessage[$channelID;{color:BDAAF9}{description:Şuanki Can Miktarın = $sum[$getUserVar[can;$authorID];$random[50;100]] :hearts:}
+//kayıt kanal son //
+
+//kayıt kanal son //
+
+
+// sahip hg
+
+
+// spam engel
+
+const dctrat = require('dctr-antispam.js'); 
+
+var authors = [];
+var warned = [];
+
+var messageLog = [];
+
+client.on('message', async message => {
+const spam = await db.fetch(`spam.${message.guild.id}`);
+if(!spam) return;
+const maxTime = await db.fetch(`max.${message.guild.id}.${message.author.id}`);
+const timeout = await db.fetch(`time.${message.guild.id}.${message.author.id}`);
+db.add(`mesaj.${message.guild.id}.${message.author.id}`, 1)
+if(timeout) {
+const sayı = await db.fetch(`mesaj.${message.guild.id}.${message.author.id}`);
+if(Date.now() < maxTime) {
+  const westraaaaam = new Discord.MessageEmbed()
+  .setColor(0x36393F)
+  .setDescription(`<@${message.author.id}> , **Bu sunucuda spam yapmak yasak!**`)
+ // .setFooter(`Bu mesaj otomatik olarak silinecektir.`)
+ if (message.member.hasPermission("BAN_MEMBERS")) return ;
+ message.channel.send(westraaaaam).then(msg => msg.delete({timeout: 1500}));
+  return message.delete();
   
-  {author:Can İksiri İle $random[50;100] Can Eklendi:$authorAvatar}
-  {footer:Sıra Sende $userTag[$getUserVar[rakip;$authorID]] ! saldır , iksir , kaç yazınız:$userAvatar[$getUserVar[rakip;$authorID]]}
-  ]
-  $endElseIf
-   $endif
-  $wait[1ms]
-  $awaitMessages[$getUserVar[rakip;$authorID];1m;saldır,iksir,kaç;saldır,iksir,kaç;:x: 1 dakika geçti! Düello 
-  iptal edildi!]
-  $setUserVar[iksirş;$randomText[var;yok];$authorID]
-  $onlyIf[$getUserVar[savaş;$authorID]!=yok;]
-  `
+}
+} else {
+db.set(`time.${message.guild.id}.${message.author.id}`, 'ok');
+db.set(`max.${message.guild.id}.${message.author.id}`, Date.now()+3000);
+setTimeout(() => {
+db.delete(`mesaj.${message.guild.id}.${message.author.id}`);
+db.delete(`time.${message.guild.id}.${message.author.id}`);
+}, 500) // default : 500
+}
+
+
 });
-bot.awaitedCommand({
-	name: 'kaç',
-	code: `
 
-  $color[BLUE]
-  $setUserVar[rakip;;$authorID]
-  $wait[1s]
-  $channelSendMessage[$channelID;{color:BLUE}
-  {title:Düello İptal Edildi !}
-  {footer:$userTag[$getUserVar[rakip;$authorID]] İle Olan Karşılaşmandan Kaçtın !:$authorAvatar}
-  {description:Kazanan Kişi = $userTag[$getUserVar[rakip;$authorID]]
-  Savaş Ödülün İse = Bir $randomText[Savaş Baltası :axe:;Suikast Bıçağı :knife:;İkili Kılıç :crossed_swords:]
+// reklam engel
 
-  }{thumbnail:$userAvatar[$getUserVar[rakip;$authorID]]}]
-  $setUserVar[savaş;yok;$authorID]
-  $setUserVar[savaş;yok;$getUserVar[rakip;$authorID]]
-  $setUserVar[rakip;;$getUserVar[rakip;$authorID]]
-  $setUserVar[can;1000;$authorID]
-  $setUserVar[can;1000;$getUserVar[rakip;$authorID]]
+////reklam-engel
+
+const reklam = [
+  ".com",
+  ".net",
+  ".xyz",
+  ".tk",
+  ".pw",
+  ".io",
+  ".me",
+  ".gg",
+  "www.",
+  "https",
+  "http",
+  ".gl",
+  ".org",
+  ".com.tr",
+  ".biz",
+  "net",
+  ".rf",
+  ".gd",
+  ".az",
+  ".party",
+".gf"
+];
+client.on("messageUpdate", async (old, nev) => {
+
+if (old.content != nev.content) {
+let i = await db.fetch(`reklam.${nev.member.guild.id}.durum`);
+let y = await db.fetch(`reklam.${nev.member.guild.id}.kanal`);
+if (i) {
+
+if (reklam.some(word => nev.content.includes(word))) {
+if (nev.member.hasPermission("BAN_MEMBERS")) return ;
+ //if (ayarlar.gelistiriciler.includes(nev.author.id)) return ;
+const embed = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`${nev.author} , **Mesajını editleyerek reklam yapmaya çalıştı!**`)
+      .addField("Mesajı:",nev)
   
-  `
+      nev.delete();
+      const embeds = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`${nev.author} , **Mesajı editleyerek reklam yapamana izin veremem!**`) 
+    client.channels.cache.get(y).send(embed)
+      nev.channel.send(embeds).then(msg => msg.delete({timeout:5000}));
+    
+}
+} else {
+}
+if (!i) return;
+}
 });
-bot.awaitedCommand({
-	name: 'red',
-	code: `$setUserVar[rakip;;$getUserVar[rakip;$authorID]]
-  $setUserVar[rakip;;$authorID]
-  $color[RED]
-  $author[Düello reddedildi;$authorAvatar]
-  $description[
-    $userTag[$getUserVar[rakip;$authorID]] Kişisinden Gelen Düello İsteğini Redettin !]`
-});
-bot.command({
-	name: 'avatar',
-	code: `
-  $author[$username[$mentioned[1;yes]] Kişisinin Avatarı;$userAvatar[$mentioned[1;yes]]]
-  $image[$userAvatar[$mentioned[1;yes]]?size=2048]
-  $footer[İsteyen Kişi $username;$authorAvatar]
-  $onlyIf[$getGlobalUserVar[karaliste;$authorID]!=evet;Hop Karalistedesin Dostum.
-  Karaliste Sebebin \`\`$getGlobalUserVar[ksebep;$authorID]\`\`]
-  `
-});
-bot.command({
-	name: 'istatistik',
-	alisaes: ['i'],
-	code: `
-  $author[İstatistiklerime Hoşgeldin $username;$authorAvatar]
-  $description[$thumbnail[$userAvatar[$clientID]]
- $addField[Sahibim; $userTag[$botOwnerID]]
 
- $addField[Oluşturulma Tarihim; $creationDate[$clientID]]
+client.on("message", async msg => {
+
+
+if(msg.author.bot) return;
+if(msg.channel.type === "dm") return;
+   let y = await db.fetch(`reklam.${msg.member.guild.id}.kanal`);
+
+let i = await db.fetch(`reklam.${msg.member.guild.id}.durum`);
+    if (i) {
+        if (reklam.some(word => msg.content.toLowerCase().includes(word))) {
+          try {
+           if (!msg.member.hasPermission("MANAGE_GUILD")) {
+           //  if (!ayarlar.gelistiriciler.includes(msg.author.id)) return ;
+msg.delete({timeout:750});
+              const embeds = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`<@${msg.author.id}> , **Bu sunucuda reklam yapmak yasak!**`)
+msg.channel.send(embeds).then(msg => msg.delete({timeout: 5000}));
+          const embed = new Discord.MessageEmbed() .setColor(0x36393F) .setDescription(`${msg.author} , **Reklam yapmaya çalıştı!**`) .addField("Mesajı:",msg)
+         client.channels.cache.get(y).send(embed)
+            }              
+          } catch(err) {
+            console.log(err);
+          }
+        }
+    }
+   if(!i) return ;
+});
+
+
+//reklam engel son //
+
+// davet sistemi
+
+const ayarlar = require('./config.json');
+const Database = require("./Helpers/Database");
+
+
+//#region Invite Manager
+const Invites = new Discord.Collection();
+
+//#region Load
+client.on("ready", () => {
+    client.guilds.cache.forEach(guild => {
+        guild.fetchInvites().then(_invites => {
+            Invites.set(guild.id, _invites);
+        }).catch(err => { });
+    });
+});
+client.on("inviteCreate", (invite) => {
+    var gi = Invites.get(invite.guild.id);
+    gi.set(invite.code, invite);
+    Invites.set(invite.guild.id, gi);
+});
+client.on("inviteDelete", (invite) => {
+    var gi = Invites.get(invite.guild.id);
+    gi.delete(invite.code);
+    Invites.set(invite.guild.id, gi);
+});
+//#endregion
+
+//#region Continuity
+
+client.on("guildCreate", (guild) => {
+	guild.fetchInvites().then(invites => {
+		Invites.set(guild.id, invites);
+	}).catch(e => {})
+});
+
+//#endregion
+
+//#region Counter
+client.on("guildMemberAdd", (member) => {
+    //const gi = new Collection().concat(Invites.get(member.guild.id));
+    const db = new Database("./Servers/" + member.guild.id, "Invites"), gi = (Invites.get(member.guild.id) || new Discord.Collection()).clone(), settings = new Database("./Servers/" + member.guild.id, "Settings").get("settings") || {};
+    var guild = member.guild, fake = (Date.now() - member.createdAt) / (1000 * 60 * 60 * 24) <= 3 ? true : false, channel = guild.channels.cache.get(settings.Channel);
+    guild.fetchInvites().then(invites => {
+        // var invite = invites.find(_i => gi.has(_i.code) && gi.get(_i.code).maxUses != 1 && gi.get(_i.code).uses < _i.uses) || gi.find(_i => !invites.has(_i.code)) || guild.vanityURLCode;
+        var invite = invites.find(_i => gi.has(_i.code) && gi.get(_i.code).uses < _i.uses) || gi.find(_i => !invites.has(_i.code)) || guild.vanityURLCode;
+        Invites.set(member.guild.id, invites);
+        var content = `${member} is joined the server.`, total = 0, regular = 0, _fake = 0, bonus = 0;
+        if(invite == guild.vanityURLCode) content = settings.defaultMessage ? settings.defaultMessage : `-member- is joined the server! But don't know that invitation he came up with. :tada:`;
+        else content = settings.welcomeMessage ? settings.welcomeMessage : `The -member-, joined the server using the invitation of the -target-.`;
+
+        if (invite.inviter) { 
+            db.set(`invites.${member.id}.inviter`, invite.inviter.id); 
+            if(fake){
+                total = db.add(`invites.${invite.inviter.id}.total`, 1);
+                _fake = db.add(`invites.${invite.inviter.id}.fake`, 1);
+            }
+            else{
+                total = db.add(`invites.${invite.inviter.id}.total`, 1);
+                regular = db.add(`invites.${invite.inviter.id}.regular`, 1);
+            }
+            var im = guild.member(invite.inviter.id);
+            bonus = db.get(`invites.${invite.inviter.id}.bonus`) || 0;
+            if(im) global.onUpdateInvite(im, guild.id, Number(total + Number(bonus)));
+            
+        }
+
+
+        db.set(`invites.${member.id}.isfake`, fake);
+
+        if(channel){
+          const westraderselamunaleykümasdkasdlksdalkasdlk = new Discord.MessageEmbed()
+          .setColor("BLUE")
+          .setTimestamp()
+          .setDescription(`${member} adlı kişi sunucuya katıldı. Davet eden şahıs: **${invite.inviter.tag}** (**${total + bonus}** davet!)`)
+       channel.send(westraderselamunaleykümasdkasdlksdalkasdlk)
+        }
+    }).catch();
+});
+
+client.on("guildMemberRemove", (member) => {
+    const db = new Database("./Servers/" + member.guild.id, "Invites"), settings = new Database("./Servers/" + member.guild.id, "Settings").get("settings") || {};
+    var total = 0, bonus = 0, regular = 0, fakecount = 0, channel = member.guild.channels.cache.get(settings.Channel), content = settings.leaveMessage ? settings.leaveMessage : `${member} is left the server.`, data = db.get(`invites.${member.id}`);
+    if(!data){
+        return;
+    }
+        if(data === null) data = "Bulunamadı"
+    if(data.isfake && data.inviter){
+        fakecount = db.sub(`invites.${data.inviter}.fake`, 1);
+        total = db.sub(`invites.${data.inviter}.total`, 1);
+    }
+    else if(data.inviter){
+        regular = db.sub(`invites.${data.inviter}.regular`, 1);
+        total = db.sub(`invites.${data.inviter}.total`, 1);
+    }
+    if(data.inviter) bonus = db.get(`invites.${data.inviter}.bonus`) || 0;
+    
+    var im = member.guild.member(data.inviter)
+    if(im) global.onUpdateInvite(im, member.guild.id, Number(total) + Number(bonus));
+
+    db.add(`invites.${data.inviter}.leave`, 1);
+     if(channel){
+        let user = client.users.cache.get(data.inviter)
+          const westraderselamunaleykümasdkasdlksdalkasdlasdjkasdlkasdjasdljaksdjklasdkljasdjlkasdlkk = new Discord.MessageEmbed()
+          .setColor("BLUE")
+          .setTimestamp()
+          .setDescription(`${member.user.tag} sunucudan ayrıldı. Şahsı davet eden: **${user.tag}** (**${Number(total) + Number(bonus)}** davet!)`)
+     	channel.send(westraderselamunaleykümasdkasdlksdalkasdlasdjkasdlkasdjasdljaksdjklasdkljasdjlkasdlkk)
+     }
+});
+//#endregion
+
+//#region Reward
+global.onUpdateInvite = (guildMember, guild, total) => {
+    if(!guildMember.manageable) return;
+    const rewards = new Database("./Servers/" + guild, "Rewards").get("rewards") || [];
+    if(rewards.length <= 0) return;
+    var taken = rewards.filter(reward => reward.Invite > total && guildMember.roles.cache.has(reward.Id));
+    taken.forEach(take => {
+        guildMember.roles.remove(take.Id);
+    });
+    var possible = rewards.filter(reward => reward.Invite <= total && !guildMember.roles.cache.has(reward.Id));
+    possible.forEach(pos =>{
+        guildMember.roles.add(pos.Id);
+    });
+}
+//#endregion
+//#endregion
+ */
+/////// gold hg başlangıç
+
+
+client.on("message", async msg => {
+
+  //const db = require("quick.db");
+  const ms2 = require("parse-ms");
+  let timeout = 600000; //süresini dilediğiniz gibi kısaltabilirsiniz. default : 600000
+  let dakdest = 1;
+  let i = db.fetch(`üyelikk_${msg.author.id}`);
+  if (db.has(`üyelikk_${msg.author.id}`) == true) {
+    if (dakdest !== null && timeout - (Date.now() - dakdest) > 0) {
+      let time = ms2(timeout - (Date.now() - dakdest));
+    } else {
+      if (msg.author.bot) return;
+      if(msg.content.size > 32){
+        var embed = new Discord.MessageEmbed()
+        .setAuthor(`Elyesa`,`${msg.author.avatarURL() || msg.author.displayAvatarURL()}`)
+        .setDescription(`Hizzaya Geçin! Burada Bir Gold Üye Belirdi! <@${msg.author.id}>`)
+        .setColor("GOLD")
+        msg.channel.send(embed).then(msg => {msg.delete({ timeout: 5000 })}).catch(console.error);
+      }
+    }
+  } else if (i == undefined) {
+  }
+  if (!i) return;
+});
+
+// gold hg bitiş
+// uptime sistemi
+
+/*client.on("message",async message => {
+        if (message.author.bot) return;
+   const fetch = require("node-fetch");
+  var args = message.content.split(" ");
+  if(args[0] == "c?uptime") {
+  var link = args[1]
+if(!link) return;
+const  links = wiodb.fetch("uptime");
+if(!link.startsWith('https://')) return message.channel.send('<a:cryptored:770187639801774080> Bu bir link değil.')
+  if(links == null) await wiodb.set("uptime",[])
+let map = []
+  var x = links
+for(var i in x) {
+  if(x[i].url.includes(link)) return message.channel.send("<a:cryptored:770187639801774080> Link sistemde zatem bulunmakta.")
+   
+}
+    message.channel.send("<a:cryptoonay:770187690402250772> Link sisteme başarıyla eklenmiştir.");
+   
+    
+    wiodb.push("uptime",{url:link})
+
+    fetch(link).catch(e => {
+
+    console.log("Siteye giremedim.")
   
- $addField[Pingim; $ping]
- $addField[Çalışma Sürem; $replaceText[$replaceText[$replaceText[$uptime;s; Saniye;-1];h; Saat;-1];m; Dakika;-1] ;yes]
- $addField[Komut Sayım; $commandsCount]
- $addField[Bulunduğum Sunucu Sayısı; $serverCount]
- $addField[Toplam Kullanıcım; $allMembersCount]
-  
-  
-  ]
-  `
-});
-bot.command({
-	name: 'kick',
-	code: `
-  $setMessageVar[kicksebep;$replaceText[**$noMentionMessage**;****;Sebep Belirtilmedi !;-1];$messageID]
-  $reactionCollector[$splitText[1];$authorID;30s;✅,❌;kickevet,kickhayır;yes]
-  $textSplit[$sendMessage[{author:$username[$mentioned[1]]$discriminator[$mentioned[1]] Adlı Kişiyi Atmak İstiyormusun?:$authorAvatar}{description:
-    ✅**Atılacak Kişi:**  <@$mentioned[1]>
-    ✅**Atılma Sebebi:**  $replaceText[**$noMentionMessage**;****;Sebep Belirtilmedi !;-1]
+ })
+ console.log("Siteye bağlandım.")
+}                                                              
+})
 
-       **Kişiyi Atmayı Onaylıyormusun?**
-             Evet: ✅ Hayır: ❌
-  }{timestamp}{thumbnail:$userAvatar[$mentioned[1]]}{footer:Atıcak Kişi $username$discriminator:$authorAvatar}{color:ffff00};yes]]
-  $onlyIf[$rolePosition[$highestRole[$authorID]]<$rolePosition[$highestRole[$findUser[$message[1]]]];{title:❗️Kendinden Üst Yetkiye Sahip Kişiyi Atamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$rolePosition[$highestRole[$clientID]]<$rolePosition[$highestRole[$findUser[$message[1]]]];{title:❗️Atmak İstediğin Kişi Benden Daha Üstte❗️}{color:00FF00}{delete:5s}]
-  $onlyPerms[kick;{title:❗️Üzgünüm Yetkin Yok❗️}{description: Bu Özelliği Kullanmak İçin Şu Yetkiye Ship Olmalısınız: **Kişileri At** }{delete:5s}]
-  $onlyBotPerms[kick;{title:❗️Botun Yetkisi Yok❗️}{description:✅Lütfen Bota **Kişileri At** İznini Verin}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=$clientID;{title:❗️Beni Atamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=$ownerID;{title:❗️Sunucu Sahibini Atamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=$authorID;{title:❗️Kendini Atamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=;{title:❗️Yanlış Kullanım❗️}{description:✅Doğru Kullanım: $getServerVar[prefix]kick @kişi sebep(isteğe bağlı) }{color:00FF00}{delete:5s}]
-  `
-});
-bot.awaitedCommand({
-	name: 'kickevet',
-	code: `
 
-  $clearReactions[$channelID;$message[1];✅]
-  $clearReactions[$channelID;$message[1];❌]
-  $editMessage[$message[1];
-  {author:$username[$mentioned[1]]$discriminator[$mentioned[1]] Adlı Kişi Başarı İle Atıldı:$authorAvatar}{description:
-    ✅**Atılan Kişi:**  <@$mentioned[1]>
-    ✅**Atılma Sebebi:** $getMessageVar[kicksebep;$messageID]
-  }{timestamp}{thumbnail:$userAvatar[$mentioned[1]]}{footer:Atan Kişi $username$discriminator:$authorAvatar}{color:00FF00} $kick[$mentioned[1];$getMessageVar[kicksebep;$messageID]]]
-  $onlyIf[$hasPerms[$authorID;kick]!=false;{title:❗️Üzgünüm Yetkin Yok❗️}{description: Bu Özelliği Kullanmak İçin Şu Yetkiye Ship Olmalısınız: **Kişileri At** }{delete:5s}{color:00FF00}]
-  `
-});
-bot.awaitedCommand({
-	name: 'kickhayır',
-	code: `
+setInterval(() => {
+const fetch = require("node-fetch");
+  const  links = wiodb.fetch("uptime");
+let map = []
+  var x = links
+for(var i in x) {
+   
+      fetch(x[i].url).catch(e => {
 
-  $clearReactions[$channelID;$message[1];✅]
-  $clearReactions[$channelID;$message[1];❌]
-  $editMessage[$message[1];
-  {title:❗️İşlem İptal Edilmiştir❗️}{color:ff0000}]
-  $onlyIf[$hasPerms[$authorID;ban]!=false;{title:❗️Üzgünüm Yetkin Yok❗️}{description: Bu Özelliği Kullanmak İçin Şu Yetkiye Ship Olmalısınız: **Kişileri At** }{delete:5s}{color:00FF00}]
-  `
-});
-bot.command({
-	name: 'ban',
-	code: `
-  $setMessageVar[bansebep;$replaceText[**$noMentionMessage**;****;Sebep Belirtilmedi !;-1];$messageID]
-  $reactionCollector[$splitText[1];$authorID;30s;✅,❌;banevet,banhayır;yes]
-  $textSplit[$sendMessage[{author:$username[$mentioned[1]]$discriminator[$mentioned[1]] Adlı Kişiyi Banlamak İstiyormusun?:$authorAvatar}{description:
-    ✅**Yasaklanıcak Kişi:**  <@$mentioned[1]>
-    ✅**Yasaklama Sebebi:**  $replaceText[**$noMentionMessage**;****;Sebep Belirtilmedi !;-1]
 
-       **Yasaklamayı Onaylıyormusun?**
-             Evet: ✅ Hayır: ❌
-  }{timestamp}{thumbnail:$userAvatar[$mentioned[1]]}{footer:Yasaklıyıcak Kişi $username$discriminator:$authorAvatar}{color:ffff00};yes]]
-  $onlyIf[$rolePosition[$highestRole[$authorID]]<$rolePosition[$highestRole[$findUser[$message[1]]]];{title:❗️Kendinden Üst Yetkiye Sahip Kişiyi Banlayamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$rolePosition[$highestRole[$clientID]]<$rolePosition[$highestRole[$findUser[$message[1]]]];{title:❗️Banlamak İstediğin Kişi Benden Daha Üstte❗️}{color:00FF00}{delete:5s}]
-  $onlyPerms[ban;{title:❗️Üzgünüm Yetkin Yok❗️}{description: Bu Özelliği Kullanmak İçin Şu Yetkiye Ship Olmalısınız: **Kişileri Banla** }{delete:5s}]
-  $onlyBotPerms[ban;{title:❗️Botun Yetkisi Yok❗️}{description:✅Lütfen Bota **Kişileri Banla** İznini Verin}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=$clientID;{title:❗️Beni Banlayamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=$ownerID;{title:❗️Sunucu Sahibini Banlayamazsın❗️}{color:00FF00}{delete:5s}{delete:5s}]
-  $onlyIf[$mentioned[1]!=$authorID;{title:❗️Kendini Banlayamazsın❗️}{color:00FF00}{delete:5s}]
-  $onlyIf[$mentioned[1]!=;{title:❗️Yanlış Kullanım❗️}{description:✅Doğru Kullanım: $getServerVar[prefix]ban @kişi sebep(isteğe bağlı)}{color:00FF00}{delete:5s}]
-  `
-});
-bot.awaitedCommand({
-	name: 'banevet',
-	code: `
+ })
 
-  $clearReactions[$channelID;$message[1];✅]
-  $clearReactions[$channelID;$message[1];❌]
-  $editMessage[$message[1];
-  {author:$username[$mentioned[1]]$discriminator[$mentioned[1]] Adlı Kişi Başarı İle Banlandı:$authorAvatar}{description:
-    ✅**Yasaklanan Kişi:**  <@$mentioned[1]>
-    ✅**Yasaklanma Sebebi:** $getMessageVar[bansebep;$messageID]
-  }{timestamp}{thumbnail:$userAvatar[$mentioned[1]]}{footer:YasakLayan Kişi $username$discriminator:$authorAvatar}{color:00FF00} $ban[$mentioned[1];$getMessageVar[bansebep;$messageID]]]
-  $onlyIf[$hasPerms[$authorID;ban]!=false;{title:❗️Üzgünüm Yetkin Yok❗️}{description: Bu Özelliği Kullanmak İçin Şu Yetkiye Ship Olmalısınız: **Kişileri Banla** }{color:00FF00}{delete:5s}]
-  `
-});
-bot.awaitedCommand({
-	name: 'banhayır',
-	code: `
+}
+}, 10000)
+*/
 
-  $clearReactions[$channelID;$message[1];✅]
-  $clearReactions[$channelID;$message[1];❌]
-  $editMessage[$message[1];
-  {title:❗️İşlem İptal Edilmiştir❗️}{color:ff0000}]
-  $onlyIf[$hasPerms[$authorID;ban]!=false;{title:❗️Üzgünüm Yetkin Yok❗️}{description: Bu Özelliği Kullanmak İçin Şu Yetkiye Ship Olmalısınız: **Kişileri Banla** }{color:00FF00}{delete:5s}]
-  `
+// çekiliş sistemi
+
+const { GiveawaysManager } = require('discord-giveaways');
+client.giveawaysManager = new GiveawaysManager(client, {
+    storage: "./giveaways.json",
+    updateCountdownEvery: 5000,
+    default: {
+        botsCanWin: false,
+        exemptPermissions: [ "MANAGE_MESSAGES", "ADMINISTRATOR" ],
+        embedColor: "#FF0000",
+        reaction: "🎉"
+    }//#FF0000
 });
 
-//--------------------- DİĞER KOMUTLAR SON -----------------------\\
-bot.command({
-	name: 'banaç',
-	code: `
-  $color[GREEN]
-  $description[Sunucudan Toplam **$getTextSplitLength** Kişinin yasağı kaldırılmıştır.]
-  $footer[$userTag[$authorID] Tarafından yapıldı;$authorAvatar]
- 
-  
- $loop[$getTextSplitLength;mustikban]
- $textSplit[$usersBanned[id];, ]
- 
-  $onlyForIDs[$ownerID;{color:RED}{author:Bu Komut Sunucu Sahibine Özeldir !:$authorAvatar}]
-  $onlyBotPerms[admin;{color:RED}{author:Sunucuda Yönetici Yetkim Yok !:$authorAvatar}]`
+//// otorol sistemi
+
+/*
+client.on("guildMemberAdd", async member => {
+  let kanal = await db.fetch(`otoRK_${member.guild.id}`);
+  let rol = await db.fetch(`otoRL_${member.guild.id}`);
+  let mesaj = db.fetch(`otoRM_${member.guild.id}`);
+  if (!rol) return;
+const benwestranasilsinizefenimmmmasdasd = new Discord.MessageEmbed()
+.setColor("BLUE")
+.setTimestamp()
+.setDescription( "**" +
+          member.user.username +
+          "** hoş geldin! Otomatik rolün verildi. Seninle beraber **" +
+          member.guild.memberCount +
+          " **kişiyiz!")
+  if (!mesaj) {
+    client.channels.cache
+      .get(kanal)
+      .send(benwestranasilsinizefenimmmmasdasd);
+    return member.roles.add(rol);
+  }
+
+  if (mesaj) {
+    var mesajs = mesaj
+      .replace("-uye-", `${member.user}`)
+      .replace("-uyetag-", `${member.user.tag}`)
+      .replace("-rol-", `${member.guild.roles.cache.get(rol).name}`)
+      .replace("-server-", `${member.guild.name}`)
+      .replace("-uyesayisi-", `${member.guild.memberCount}`)
+      .replace(
+        "-botsayisi-",
+        `${member.guild.members.cache.filter(m => m.user.bot).size}`
+      )
+      .replace("-bolge-", `${member.guild.region}`)
+      .replace("-kanalsayisi-", `${member.guild.channels.cache.size}`);
+    member.roles.add(rol);
+    return client.channels.cache.get(kanal).send(mesajs);
+  }
 });
-bot.awaitedCommand({
-	name: 'mustikban',
-	code: `
-$suppressErrors
-  $unban[$randomText[$joinSplitText[;]]]
-      $textSplit[$usersBanned[id];, ]
-`
-});
+*/

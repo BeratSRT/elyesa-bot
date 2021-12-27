@@ -1,1 +1,2 @@
-premium komutlar için: $onlyIf[$getGlobalUserVar[premium;$authorID]==evet;{title:❗️Premium Değilsin❗️}{color:303136}{delete:5s}] 
+# ALTYAPI ☆DrDeliツ#0007 , ☆DrDeliツ#0001 ve Axelance ∾#0880 tarafından yapılmıştır. discord.gg/uptime
+Discord Crypto Bot Altyapı Yeni v12

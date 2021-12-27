@@ -1,20 +1,41 @@
 {
-  "name": "elyesa",
+  "//1": "Crypto",
+  "//2": "Crypto",
+  "name": "Crypto",
   "version": "0.0.1",
-  "description": "A simple Node app built on fastify, instantly up and running.",
-  "main": "server.js",
+  "description": "Crypto",
+  "main": "shard.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node shard.js"
   },
   "dependencies": {
-    "aoi.js": "^4.5.0",
-    "fs": "^0.0.2"
+    "adapter": "^1.0.0-beta.8",
+    "chalk": "^4.1.0",
+    "common-tags": "^1.8.0",
+    "croxy-api": "^2.0.3",
+    "croxydb": "^0.0.7",
+    "dctr-antispam.js": "^0.1.1",
+    "discord-giveaways": "^4.2.1",
+    "discord.js": "^12.4.1",
+    "express": "^4.17.1",
+    "jimp": "^0.12.1",
+    "moment": "^2.26.0",
+    "moment-duration-format": "^2.3.2",
+    "ms": "^2.1.2",
+    "node-fetch": "^2.6.1",
+    "parse-ms": "^2.1.0",
+    "quick.db": "^7.1.1",
+    "simple-youtube-api": "^5.2.1",
+    "snekfetch": "^4.0.4",
+    "wio.db": "^4.0.9",
+    "ytdl-core": "^4.0.0",
+    "discord-buttons": "^4.0.0"
   },
   "engines": {
     "node": "12.x"
   },
   "repository": {
-    "url": "https://glitch.com/edit/#!/glitch-hello-node"
+    "url": "https://glitch.com/edit/#!/hello-express"
   },
   "license": "MIT",
   "keywords": [
